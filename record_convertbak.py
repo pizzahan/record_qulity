@@ -69,10 +69,10 @@ def file_trans(acc_list, link):
                 else:
                     logging.info("录音文件识别请求失败！" + statusText)
                     return ""
-            except ServerException as server_ex:
-                logging.info(server_ex)
-            except ClientException as client_ex:
-                logging.info(client_ex)
+            except ServerException as e:
+                logging.info(e)
+            except ClientException as e:
+                logging.info(e)
             # 创建识别结果查询请求，设置查询参数为任务ID
             getRequest = CommonRequest()
             getRequest.set_domain(DOMAIN)
@@ -101,8 +101,8 @@ def file_trans(acc_list, link):
                                 for Sentence in Sentences:
                                     result = result + Sentence.get("Text", "")
                         break
-                except ServerException as server_ex:
-                    logging.error(server_ex)
+                except ServerException as e:
+                    logging.error(e)
             if statusText == "SUCCESS" or statusText == "SUCCESS_WITH_NO_VALID_FRAGMENT":
                 logging.info("录音文件识别成功！")
                 break
@@ -145,9 +145,9 @@ def save_text(text, dest_path):
 # 获取ali配置
 def get_accs(cf):
     al = []
-    accDb, err1 = cf.get_dest_db()
-    if err1 is not None:
-        logging.error(err1)
+    accDb, e = cf.get_dest_db()
+    if e is not None:
+        logging.error(e)
         exit(-1)
     accSql = 'select ak,aks,apk from mm_ali'
     accCur = accDb.cursor()
@@ -163,13 +163,10 @@ def get_accs(cf):
     accDb.close()
     return al
 
-
 # 每天充值账户状态为可用
 def reset_acc(acc_list):
     while 1:
-        sleep_seconds = int(time.time() / 3600 / 24) * 3600 * 24 + (24 - 8) * 3600 - int(
-            time.time())
-        time.sleep(sleep_seconds)
+        time.sleep(3600 * 24)
         logging.info("reset account list status day by day!")
         for accDic in acc_list:
             accDic['status'] = True
@@ -189,16 +186,12 @@ if __name__ == "__main__":
     if len(accList) > 0:
         t = threading.Thread(target=reset_acc, args=(accList,))
         t.start()
-        destDb, err = configer.get_dest_db()
-        if destDb is None or err is not None:
-            logging.error("获取数据库链接失败：{0}".format(err))
-            exit(-1)
         while True:
+            destDb, err = configer.get_dest_db()
+            if err is not None:
+                logging.error(err)
+                exit(-1)
             try:
-                destDb.ping(reconnect=True)
-                if destDb._closed == True:
-                    logging.error("获取数据库链接失败：{0}".format(err))
-                    exit(-1)
                 sql = ''' select id,file_name,substr(SUBSTRING_INDEX(SUBSTRING_INDEX(file_name,'_',2),'/',-1),1,11) from mm_record_quality where status = 'RDY'  order by id limit {0}'''.format(
                     configer.limit)
 
@@ -209,28 +202,21 @@ if __name__ == "__main__":
                     for row in rows:
                         idIdx = row[0]
                         fileName = row[1]
-                        logging.debug("开始处理id={0}".format(idIdx))
                         subPath = row[2].replace('_', '/')
-                        logging.debug("{0} process {1} at {2}".format(os.getpid(),idIdx,time.time()))
+
                         # 生成签名URL
                         fileLink = configer.bucket.sign_url('GET', row[1], configer.expires)
                         resText = file_trans(accList, fileLink)
                         if resText != "":
                             if resText == "USER_BIZDURATION_QUOTA_EXCEED":
-                                destDb.commit()
-                                sleep_seconds = int(time.time() / 3600 / 24) * 3600 * 24 + 24 * 3600 - int(
+                                sleep_seconds = int(time.time() / 3600 / 24) * 3600 * 24 + (24 - 8) * 3600 - int(
                                     time.time())
                                 logging.error(
                                     "there's no free duration today,process will be start after {0} seconds.".format(
                                         sleep_seconds))
                                 for acc in accList:
                                     acc['status'] = True
-                                logging.info("进入休眠{0}s".format(sleep_seconds))
                                 time.sleep(sleep_seconds)
-                                destDb, err = configer.get_dest_db()
-                                if destDb is None or err is not None:
-                                    logging.error("获取数据库链接失败：{0}".format(err))
-                                    exit(-1)
                                 break
 
                             destPath = configer.textPath + '/' + subPath + '/'
@@ -242,27 +228,22 @@ if __name__ == "__main__":
                             updateSql = ''' update mm_record_quality set status = 'CVT',text_file = '{0}' where id = {1} '''.format(
                                 destPath, idIdx)
                             destCur.execute(updateSql)
-                            logging.debug("插入id={0}".format(idIdx))
-                            insertSql = ''' insert into mm_record_content (id,record_content) value({0},'{1}') '''.format(
-                                idIdx, resText)
-                            destCur.execute(insertSql)
                         else:
                             logging.error("识别失败 " + fileName)
                             updateSql = ''' update mm_record_quality set status = 'ERR' where id = {0} '''.format(
                                 idIdx)
                             destCur.execute(updateSql)
                 else:
-                    destDb.commit()
                     logging.info("进入休眠{0}s".format(configer.interval))
                     time.sleep(configer.interval)
 
-                destDb.ping(reconnect=True)
                 destDb.commit()
+                destDb.close()
             except Exception as e:
-                logging.error(e)
-                logging.error(traceback.format_exc())
                 if destDb is not None:
                     destDb.commit()
                     destDb.close()
+                logging.error(e)
+                logging.error(traceback.format_exc())
     else:
         logging.error("未配置ali账户信息")

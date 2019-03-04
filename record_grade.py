@@ -80,14 +80,14 @@ if __name__ == "__main__":
                                                                                                                  statistic_dic[
                                                                                                                      k])
                             destCur.execute(insertSql)
-                            destDb.commit()
                     updateSql = ''' update mm_record_quality set status = 'GRD',score = {0} where id = {1} '''.format(
                         score, idIdx)
                     destCur.execute(updateSql)
-            destDb.commit()
-            destDb.close()
-            logging.info("进入休眠{0}s".format(configer.interval))
-            time.sleep(configer.interval)
+            else:
+                destDb.commit()
+                destDb.close()
+                logging.info("进入休眠{0}s".format(configer.interval))
+                time.sleep(configer.interval)
         except Exception as e:
             if destDb is not None:
                 destDb.commit()
