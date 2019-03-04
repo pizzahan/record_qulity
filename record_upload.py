@@ -53,8 +53,8 @@ def process(configer, beginTime, endTime):
         #         cid = row[0]
         #         result = row[1]
 
-        srcSql = ''' select a.dphone,c.dirid,c.filename,a.id,a.cid,a.prjid,b.duration,d.memo,e.memo,a.content,a.uid from pre_cc_biztrack a,pre_cc_call b,pre_cc_recfile c,pre_cc_corp d,pre_cc_project e 
-        where a.result=2 and a.callid = b.id and b.recfileid = c.id and a.cid = d.id and a.prjid = e.id and b.dateline BETWEEN {0} and {1}'''.format(
+        srcSql = ''' select a.dphone,c.dirid,c.filename,a.id,a.cid,a.prjid,b.duration,d.memo,e.memo,a.content,a.uid,f.name workerno,f.memo workername from pre_cc_biztrack a,pre_cc_call b,pre_cc_recfile c,pre_cc_corp d,pre_cc_project e, pre_cc_user f
+        where a.result=2 and a.callid = b.id and b.recfileid = c.id and a.cid = d.id and a.prjid = e.id and a.uid = f.id and b.dateline BETWEEN {0} and {1}'''.format(
             beginTime, endTime)
         effect_rows = srcCur.execute(srcSql)
         if effect_rows > 0:
@@ -71,6 +71,8 @@ def process(configer, beginTime, endTime):
                 project_name = row[8]
                 content = row[9]
                 user_id = row[10]
+                worker_id = row[11]
+                worker_name = row[12]
                 destFile = '{0}/{1}'.format(time.strftime('%Y%m%d/%H', time.localtime(beginTime)), fileName)
                 # 上传文件
                 if recDir == 1:
@@ -79,8 +81,8 @@ def process(configer, beginTime, endTime):
                     localPath = '{0}/{1}'.format(configer.wavPath2, fileName)
                 if not rec.checkExists(destFile):
                     rec.upload(destFile, localPath)
-                    destSql = ''' insert into mm_record_quality(mobile,file_name,status,src_id,cid,prjid,duration,company_name,project_name,content,uid) value ('{0}','{1}','RDY',{2},{3},{4},{5},'{6}','{7}','{8}',{9}) '''.format(
-                        mobile, destFile, srcId, cid, prjid, duration, company_name, project_name, content, user_id)
+                    destSql = ''' insert into mm_record_quality(mobile,file_name,status,src_id,cid,prjid,duration,company_name,project_name,content,uid, worker_no, worker_name) value ('{0}','{1}','RDY',{2},{3},{4},{5},'{6}','{7}','{8}',{9},'{10}','{11}') '''.format(
+                        mobile, destFile, srcId, cid, prjid, duration, company_name, project_name, content, user_id, worker_id, worker_name)
                     logging.debug(destSql)
                     destCur.execute(destSql)
                 else:
