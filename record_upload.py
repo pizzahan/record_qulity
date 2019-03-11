@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import argparse
+import datetime
 import logging.config
 import os
 import signal
@@ -54,7 +55,7 @@ def process(configer, beginTime, endTime):
         #         result = row[1]
 
         srcSql = ''' select a.dphone,c.dirid,c.filename,a.id,a.cid,a.prjid,b.duration,d.memo,e.memo,a.content,a.uid,f.name workerno,f.memo workername from pre_cc_biztrack a,pre_cc_call b,pre_cc_recfile c,pre_cc_corp d,pre_cc_project e, pre_cc_user f
-        where a.result=2 and a.callid = b.id and b.recfileid = c.id and a.cid = d.id and a.prjid = e.id and a.uid = f.id and b.dateline BETWEEN {0} and {1}'''.format(
+        where a.result=2 and a.callid = b.id and b.recfileid = c.id and a.cid = d.id and a.prjid = e.id and a.uid = f.id and a.dateline BETWEEN {0} and {1}'''.format(
             beginTime, endTime)
         effect_rows = srcCur.execute(srcSql)
         if effect_rows > 0:
@@ -106,8 +107,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', help='配置文件', default='conf/record.conf')
     parser.add_argument('--logging', help='日志配置', default='conf/logging_upload.conf')
-    parser.add_argument('--beginTime', help='通话开始时间，格式为%Y%m%d%H', default='None')
-    parser.add_argument('--endTime', help='通话结束时间，格式为%Y%m%d%H', default='None')
+    parser.add_argument('--beginTime', help=r'开始时间，格式为%%Y%%m%%d%%H', default='None')
+    parser.add_argument('--endTime', help=r'结束时间，格式为%%Y%%m%%d%%H', default='None')
     args = parser.parse_args()
 
     if args.logging:
@@ -128,5 +129,7 @@ if __name__ == "__main__":
             endTime = beginTime + 3600
             t = threading.Thread(target=process, args=(rec.configer, beginTime, endTime,))
             t.start()
-            logging.info("进入休眠3600s")
-            time.sleep(3600)
+            timeNow = datetime.datetime.today()
+            sleepTime = 3600 - timeNow.minute * 60 - timeNow.second + 1
+            logging.info("进入休眠{0}s".format(sleepTime))
+            time.sleep(sleepTime)

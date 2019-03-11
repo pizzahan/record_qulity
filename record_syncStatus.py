@@ -34,20 +34,26 @@ def process(in_configer, in_beginTime, in_endTime):
         #         cid = row[0]
         #         result = row[1]
 
-        destSql = ''' select src_id from mm_record_quality where date_format(create_time,'%Y%m%d%H') BETWEEN {0} and {1}'''.format(
+        destSql = ''' select src_id,id from mm_record_quality where date_format(create_time,'%Y%m%d%H') BETWEEN {0} and {1}'''.format(
             tmp_beginTime, tmp_endTime)
         effect_rows = destCur.execute(destSql)
         if effect_rows > 0:
             dest_rows = destCur.fetchall()
             for dest_row in dest_rows:
                 srcId = dest_row[0]
+                id = dest_row[1]
                 srcSql = ''' select a.status from pre_cc_biztrack a where id = {0} '''.format(srcId)
                 src_effects = srcCur.execute(srcSql)
                 if src_effects == 1:
                     detect_status = srcCur.fetchone()[0]
-                    destUpdateSql = ''' update mm_record_quality set detect_result = {0} where src_id={1} '''.format(
-                        detect_status, srcId)
-                destCur.execute(destUpdateSql)
+                    destUpdateSql = ''' update mm_record_quality set detect_result = {0} where src_id={1} and id = {2} '''.format(
+                        detect_status, srcId, id)
+                    destCur.execute(destUpdateSql)
+
+                    destUpdateSql1 = ''' update pt_thread set detect_result = {0} where record_id={1} '''.format(
+                        detect_status, id)
+                    destCur.execute(destUpdateSql1)
+
         srcDb.commit()
         destDb.commit()
         srcDb.close()
@@ -67,8 +73,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', help='配置文件', default='conf/record.conf')
     parser.add_argument('--logging', help='日志配置', default='conf/logging_syncStatus.conf')
-    parser.add_argument('--beginTime', help='开始时间，格式为%Y%m%d%H', default='None')
-    parser.add_argument('--endTime', help='结束时间，格式为%Y%m%d%H', default='None')
+    parser.add_argument('--beginTime', help=r'开始时间，格式为%%Y%%m%%d%%H', default='None')
+    parser.add_argument('--endTime', help=r'结束时间，格式为%%Y%%m%%d%%H', default='None')
     args = parser.parse_args()
 
     if args.logging:
@@ -91,5 +97,7 @@ if __name__ == "__main__":
             t = threading.Thread(target=process,
                                  args=(configer, beginTime, endTime,))
             t.start()
-            logging.info("进入休眠3600s")
-            time.sleep(3600)
+            timeNow = datetime.datetime.today()
+            sleepTime = 3600 - timeNow.minute * 60 - timeNow.second + 1
+            logging.info("进入休眠{0}s".format(sleepTime))
+            time.sleep(sleepTime)
