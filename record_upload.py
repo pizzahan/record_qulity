@@ -54,7 +54,7 @@ def process(configer, beginTime, endTime):
         #         cid = row[0]
         #         result = row[1]
 
-        srcSql = ''' select a.dphone,c.dirid,c.filename,a.id,a.cid,a.prjid,b.duration,d.memo,e.memo,a.content,a.uid,f.name workerno,f.memo workername from pre_cc_biztrack a,pre_cc_call b,pre_cc_recfile c,pre_cc_corp d,pre_cc_project e, pre_cc_user f
+        srcSql = ''' select a.dphone,c.dirid,c.filename,a.id,a.cid,a.prjid,b.duration,d.memo,e.memo,a.content,a.uid,f.name workerno,f.memo workername,a.dateline from pre_cc_biztrack a,pre_cc_call b,pre_cc_recfile c,pre_cc_corp d,pre_cc_project e, pre_cc_user f
         where a.result=2 and a.callid = b.id and b.recfileid = c.id and a.cid = d.id and a.prjid = e.id and a.uid = f.id and a.dateline BETWEEN {0} and {1}'''.format(
             beginTime, endTime)
         effect_rows = srcCur.execute(srcSql)
@@ -74,7 +74,8 @@ def process(configer, beginTime, endTime):
                 user_id = row[10]
                 worker_id = row[11]
                 worker_name = row[12]
-                destFile = '{0}/{1}'.format(time.strftime('%Y%m%d/%H', time.localtime(beginTime)), fileName)
+                dateline = row[13]
+                destFile = '{0}/{1}'.format(time.strftime('%Y%m%d/%H', time.localtime(dateline)), fileName)
                 # 上传文件
                 if recDir == 1:
                     localPath = '{0}/{1}'.format(configer.wavPath1, fileName)

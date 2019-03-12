@@ -1,5 +1,6 @@
 # -*- coding: utf8 -*-
 import argparse
+import datetime
 import json
 import logging.config
 import os
@@ -167,8 +168,8 @@ def get_accs(cf):
 # 每天充值账户状态为可用
 def reset_acc(acc_list):
     while 1:
-        sleep_seconds = int(time.time() / 3600 / 24) * 3600 * 24 + (24 - 8) * 3600 - int(
-            time.time())
+        timeNow = datetime.datetime.today()
+        sleep_seconds = 3600 * 24 - timeNow.hour * 60 * 60 - timeNow.minute * 60 - timeNow.second + 1
         time.sleep(sleep_seconds)
         logging.info("reset account list status day by day!")
         for accDic in acc_list:
