@@ -76,6 +76,7 @@ def process(configer, beginTime, endTime):
                 worker_name = row[12]
                 dateline = row[13]
                 destFile = '{0}/{1}'.format(time.strftime('%Y%m%d/%H', time.localtime(dateline)), fileName)
+                logging.debug(''' process srcid = {0} filename = {1} '''.format(srcId,fileName))
                 # 上传文件
                 if recDir == 1:
                     localPath = '{0}/{1}'.format(configer.wavPath1, fileName)
