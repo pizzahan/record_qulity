@@ -54,38 +54,95 @@ def process(configer, beginTime, endTime):
         #         cid = row[0]
         #         result = row[1]
 
-        srcSql = ''' select a.dphone,c.dirid,c.filename,a.id,a.cid,a.prjid,b.duration,d.memo,e.memo,a.content,a.uid,f.name workerno,f.memo workername,a.dateline from pre_cc_biztrack a,pre_cc_call b,pre_cc_recfile c,pre_cc_corp d,pre_cc_project e, pre_cc_user f
-        where a.result=2 and a.callid = b.id and b.recfileid = c.id and a.cid = d.id and a.prjid = e.id and a.uid = f.id and a.dateline BETWEEN {0} and {1}'''.format(
+        # srcSql1 = ''' select a.dphone,c.dirid,c.filename,a.id,a.cid,a.prjid,b.duration,d.memo,e.memo,a.content,a.uid,f.name workerno,f.memo workername,a.dateline from pre_cc_biztrack a,pre_cc_call b,pre_cc_recfile c,pre_cc_corp d,pre_cc_project e, pre_cc_user f
+        #         where a.result=2 and a.callid = b.id and b.recfileid = c.id and a.cid = d.id and a.prjid = e.id and a.uid = f.id and a.dateline BETWEEN {0} and {1}'''.format(
+        #     beginTime, endTime)
+        # mobile = row[0]
+        # recDir = row[1]
+        # fileName = row[2]
+        # srcId = row[3]
+        # cid = row[4]
+        # prjid = row[5]
+        # duration = row[6]
+        # company_name = row[7]
+        # project_name = row[8]
+        # content = row[9]
+        # user_id = row[10]
+        # worker_id = row[11]
+        # worker_name = row[12]
+        # dateline = row[13]
+
+        srcSql = ''' select a.id, a.dphone, a.callid, a.cid, a.prjid, a.content, a.uid, a.dateline, a.status  from pre_cc_biztrack a
+                where a.result=2 and a.dateline BETWEEN {0} and {1}'''.format(
             beginTime, endTime)
         effect_rows = srcCur.execute(srcSql)
         if effect_rows > 0:
             rows = srcCur.fetchall()
             for row in rows:
-                mobile = row[0]
-                recDir = row[1]
-                fileName = row[2]
-                srcId = row[3]
-                cid = row[4]
-                prjid = row[5]
-                duration = row[6]
-                company_name = row[7]
-                project_name = row[8]
-                content = row[9]
-                user_id = row[10]
-                worker_id = row[11]
-                worker_name = row[12]
-                dateline = row[13]
-                destFile = '{0}/{1}'.format(time.strftime('%Y%m%d/%H', time.localtime(dateline)), fileName)
-                logging.debug(''' process srcid = {0} filename = {1} '''.format(srcId,fileName))
+                srcId = row[0]
+                mobile = row[1]
+                callId = row[2]
+                cid = row[3]
+                prjid = row[4]
+                content = row[5]
+                user_id = row[6]
+                dateline = row[7]
+                detect_result = row[8]
+                sql_pre_cc_call = ''' select b.duration,b.recfileid from pre_cc_call b where b.id = {0} '''.format(callId)
+                effect_rows_pre_cc_call = srcCur.execute(sql_pre_cc_call)
+                if effect_rows_pre_cc_call > 0:
+                    rows_pre_cc_call = srcCur.fetchone()
+                    duration = rows_pre_cc_call[0]
+                    recfileid = rows_pre_cc_call[1]
+                    sql_pre_cc_recfile = ''' select c.dirid,c.filename from pre_cc_recfile c where c.id = {0} '''.format(recfileid)
+                    effect_rows_pre_cc_recfile = srcCur.execute(sql_pre_cc_recfile)
+                    if effect_rows_pre_cc_recfile > 0:
+                        rows_pre_cc_recfile = srcCur.fetchone()
+                        dirid = rows_pre_cc_recfile[0]
+                        filename = rows_pre_cc_recfile[1]
+                    else:
+                        logging.error("未找到 pre_cc_recfile 记录 sql = {0}".format(sql_pre_cc_recfile))
+                        continue
+                else:
+                    logging.error("未找到 pre_cc_call 记录 sql = {0}".format(sql_pre_cc_call))
+                    continue
+                sql_pre_cc_corp = ''' select d.memo from pre_cc_corp d where d.id = {0} '''.format(cid)
+                effect_rows_pre_cc_corp = srcCur.execute(sql_pre_cc_corp)
+                if effect_rows_pre_cc_corp > 0:
+                    rows_pre_cc_corp = srcCur.fetchone()
+                    company_name = rows_pre_cc_corp[0]
+                else:
+                    logging.error("未找到 pre_cc_corp 记录 sql = {0}".format(sql_pre_cc_corp))
+                    continue
+                sql_pre_cc_project = ''' select e.memo from pre_cc_project e where e.id = {0} '''.format(prjid)
+                effect_rows_pre_cc_project = srcCur.execute(sql_pre_cc_project)
+                if effect_rows_pre_cc_project > 0:
+                    rows_pre_cc_project = srcCur.fetchone()
+                    project_name = rows_pre_cc_project[0]
+                else:
+                    logging.error("未找到 pre_cc_project 记录 sql = {0}".format(sql_pre_cc_project))
+                    continue
+                sql_pre_cc_user = ''' select f.name workerno,f.memo workername from pre_cc_user f where f.id = {0} '''.format(user_id)
+                effect_rows_pre_cc_user = srcCur.execute(sql_pre_cc_user)
+                if effect_rows_pre_cc_user > 0:
+                    rows_pre_cc_user = srcCur.fetchone()
+                    worker_id = rows_pre_cc_user[0]
+                    worker_name = rows_pre_cc_user[1]
+                else:
+                    logging.error("未找到 pre_cc_user 记录 sql = {0}".format(sql_pre_cc_user))
+                    continue
+
+                destFile = '{0}/{1}'.format(time.strftime('%Y%m%d/%H', time.localtime(dateline)), filename)
+                logging.debug(''' process srcid = {0} filename = {1} '''.format(srcId,filename))
                 # 上传文件
-                if recDir == 1:
-                    localPath = '{0}/{1}'.format(configer.wavPath1, fileName)
-                elif recDir == 2:
-                    localPath = '{0}/{1}'.format(configer.wavPath2, fileName)
+                if dirid == 1:
+                    localPath = '{0}/{1}'.format(configer.wavPath1, filename)
+                elif dirid == 2:
+                    localPath = '{0}/{1}'.format(configer.wavPath2, filename)
                 if not rec.checkExists(destFile):
                     rec.upload(destFile, localPath)
-                    destSql = ''' insert into mm_record_quality(mobile,file_name,status,src_id,cid,prjid,duration,company_name,project_name,content,uid, worker_no, worker_name) value ('{0}','{1}','RDY',{2},{3},{4},{5},'{6}','{7}','{8}',{9},'{10}','{11}') '''.format(
-                        mobile, destFile, srcId, cid, prjid, duration, company_name, project_name, content, user_id, worker_id, worker_name)
+                    destSql = ''' insert into mm_record_quality(mobile,file_name,status,src_id,cid,prjid,duration,company_name,project_name,content,uid, worker_no, worker_name, detect_result) value ('{0}','{1}','RDY',{2},{3},{4},{5},'{6}','{7}','{8}',{9},'{10}','{11}','{12}') '''.format(
+                        mobile, destFile, srcId, cid, prjid, duration, company_name, project_name, content, user_id, worker_id, worker_name, detect_result)
                     logging.debug(destSql)
                     destCur.execute(destSql)
                 else:
