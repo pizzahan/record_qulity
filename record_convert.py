@@ -150,7 +150,7 @@ def get_accs(cf):
     if err1 is not None:
         logging.error(err1)
         exit(-1)
-    accSql = 'select ak,aks,apk from mm_ali'
+    accSql = 'select ak,aks,apk from mm_ali where use_flag = "ON" '
     accCur = accDb.cursor()
     efrs = accCur.execute(accSql)
     if efrs > 0:
