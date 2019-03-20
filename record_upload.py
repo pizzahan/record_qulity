@@ -80,6 +80,7 @@ def process(configer, beginTime, endTime):
             rows = srcCur.fetchall()
             for row in rows:
                 srcId = row[0]
+                logging.debug("process srcId = {0}".format(srcId))
                 mobile = row[1]
                 callId = row[2]
                 cid = row[3]
