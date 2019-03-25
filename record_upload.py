@@ -106,7 +106,7 @@ def process(configer, beginTime, endTime):
                     else:
                         logging.error("未找到 pre_cc_recfile 记录 sql = {0}".format(sql_pre_cc_recfile))
                         # 20190325 关于手工补单bug优化
-                        sql_mm = ''' select id from (select id from mm_record_quality where mobile = {0} order by create_time desc) a group by a.id '''.format(mobile)
+                        sql_mm = ''' select id from (select id from mm_record_quality where mobile = {0} and status != 'RDY' order by create_time desc) a group by a.id '''.format(mobile)
                         effect_rows_mm = destCur.execute(sql_mm)
                         if effect_rows_mm > 0:
                             rows_mm = destCur.fetchone()
