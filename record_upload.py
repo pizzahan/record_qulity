@@ -82,6 +82,7 @@ def process(configer, beginTime, endTime):
                 srcId = row[0]
                 logging.debug("process srcId = {0}".format(srcId))
                 mobile = row[1]
+                mm_status = 'RDY'
                 callId = row[2]
                 cid = row[3]
                 prjid = row[4]
@@ -101,8 +102,24 @@ def process(configer, beginTime, endTime):
                         rows_pre_cc_recfile = srcCur.fetchone()
                         dirid = rows_pre_cc_recfile[0]
                         filename = rows_pre_cc_recfile[1]
+                        
                     else:
                         logging.error("未找到 pre_cc_recfile 记录 sql = {0}".format(sql_pre_cc_recfile))
+                        # 20190325 关于手工补单bug优化
+                        sql_mm = ''' select id from (select id from mm_record_quality where mobile = {0} order by create_time desc) a group by a.id '''.format(mobile)
+                        effect_rows_mm = destCur.execute(sql_mm)
+                        if effect_rows_mm > 0:
+                            rows_mm = destCur.fetchone()
+                            mm_id = rows_mm[0]
+                            sql_mm_recover = ''' insert into  mm_record_quality (mobile,file_name,text_file,status,score,src_id,duration,cid,prjid,company_name,project_name,content,operator_id,deal,uid,worker_no,worker_name,detect_result)
+                            select mobile,file_name,text_file,status,score,src_id,duration,cid,prjid,company_name,project_name,'{0}',operator_id,deal,uid,worker_no,worker_name,detect_result from mm_record_quality 
+                             where id = {1}'''.format(content, mm_id)
+                            logging.debug("sql_mm_recover = {0}".format(sql_mm_recover))
+                            effect_rows_mm_recover = destCur.execute(sql_mm_recover)
+                            if effect_rows_mm_recover != 1:
+                                logging.error("补充手工单失败 sql_mm_recover = {0}".format(sql_mm_recover))
+                        else:
+                            logging.error("未找到 mm_record_quality 记录 sql_mm = {0}".format(sql_mm))
                         continue
                 else:
                     logging.error("未找到 pre_cc_call 记录 sql = {0}".format(sql_pre_cc_call))
@@ -142,8 +159,8 @@ def process(configer, beginTime, endTime):
                     localPath = '{0}/{1}'.format(configer.wavPath2, filename)
                 if not rec.checkExists(destFile):
                     rec.upload(destFile, localPath)
-                    destSql = ''' insert into mm_record_quality(mobile,file_name,status,src_id,cid,prjid,duration,company_name,project_name,content,uid, worker_no, worker_name, detect_result) value ('{0}','{1}','RDY',{2},{3},{4},{5},'{6}','{7}','{8}',{9},'{10}','{11}','{12}') '''.format(
-                        mobile, destFile, srcId, cid, prjid, duration, company_name, project_name, content, user_id, worker_id, worker_name, detect_result)
+                    destSql = ''' insert into mm_record_quality(mobile,file_name,status,src_id,cid,prjid,duration,company_name,project_name,content,uid, worker_no, worker_name, detect_result) value ('{0}','{1}','{2}',{3},{4},{5},{6},'{7}','{8}','{9}',{10},'{11}','{12}','{13}') '''.format(
+                        mobile, destFile, mm_status, srcId, cid, prjid, duration, company_name, project_name, content, user_id, worker_id, worker_name, detect_result)
                     logging.debug(destSql)
                     destCur.execute(destSql)
                 else:
