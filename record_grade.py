@@ -53,6 +53,7 @@ if __name__ == "__main__":
     local_dic = load_words(configer.localDict)
 
     while 1:
+        icnt = 0
         destDb, err = configer.get_dest_db()
         if err is not None:
             logging.error(err)
@@ -66,6 +67,7 @@ if __name__ == "__main__":
                 logging.info("begin to process {0} records".format(effectRows))
                 rows = destCur.fetchall()
                 for row in rows:
+                    icnt += 1
                     idIdx = row[0]
                     fileName = row[1]
                     logging.info("begin to process id = {0}".format(idIdx))
@@ -83,6 +85,9 @@ if __name__ == "__main__":
                     updateSql = ''' update mm_record_quality set status = 'GRD',score = {0} where id = {1} '''.format(
                         score, idIdx)
                     destCur.execute(updateSql)
+                    if icnt % 1000 == 0:
+                        destDb.commit()
+                        destDb.ping(reconnect=True)
             else:
                 destDb.commit()
                 destDb.close()

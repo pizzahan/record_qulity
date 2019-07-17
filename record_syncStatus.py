@@ -23,6 +23,7 @@ def process(in_configer, in_beginTime, in_endTime):
         logging.error(err)
         return
     try:
+        str_srcId = ''
         srcCur = srcDb.cursor()
         destCur = destDb.cursor()
         # 呼叫结果配置 pre_cc_biztemp.result 和业务关系比较复杂，后面优化
@@ -34,26 +35,48 @@ def process(in_configer, in_beginTime, in_endTime):
         #         cid = row[0]
         #         result = row[1]
 
-        destSql = ''' select src_id,id from mm_record_quality where date_format(create_time,'%Y%m%d%H') BETWEEN {0} and {1}'''.format(
+        destSql = ''' select src_id,id from mm_record_quality where date_format(create_time,'%Y%m%d%H') > '{0}' and date_format(create_time,'%Y%m%d%H') <= '{1}' '''.format(
             tmp_beginTime, tmp_endTime)
         effect_rows = destCur.execute(destSql)
-        if effect_rows > 0:
-            dest_rows = destCur.fetchall()
-            for dest_row in dest_rows:
-                srcId = dest_row[0]
-                id = dest_row[1]
-                srcSql = ''' select a.status from pre_cc_biztrack a where id = {0} '''.format(srcId)
-                src_effects = srcCur.execute(srcSql)
-                if src_effects == 1:
-                    detect_status = srcCur.fetchone()[0]
-                    destUpdateSql = ''' update mm_record_quality set detect_result = {0} where src_id={1} and id = {2} '''.format(
-                        detect_status, srcId, id)
-                    destCur.execute(destUpdateSql)
+        if effect_rows <= 0:
+            logging.info("{} 至 {} 时间段没有记录需要处理".format(tmp_beginTime,tmp_endTime))
+            srcDb.commit()
+            destDb.commit()
+            srcDb.close()
+            destDb.close()
+            return
+        dest_rows = destCur.fetchall()
+        for dest_row in dest_rows:
+            srcId = str(dest_row[0])
+            if len(str_srcId) == 0:
+                str_srcId = srcId
+            else:
+                str_srcId = '{},{}'.format(str_srcId,srcId)
+        dest_dict = dict(dest_rows)
+        srcSql = ''' select a.id, a.status, a.content, a.chkmemo from pre_cc_biztrack a where id in ({0}) '''.format(str_srcId)
+        src_effects = srcCur.execute(srcSql)
+        if src_effects <= 0:
+            logging.error("t3cc 数据库未找到对应记录 id in ({})".format(str_srcId))
+            srcDb.commit()
+            destDb.commit()
+            srcDb.close()
+            destDb.close()
+            return
+        t3cc_rows = srcCur.fetchall()
+        for row in t3cc_rows:
+            srcId = row[0]
+            detect_status = row[1]
+            content = row[2]
+            chkmemo = row[3]
+            destUpdateSql = ''' update mm_record_quality set detect_result = {},content = '{}',chkmemo = '{}' where src_id={} and id = {} '''.format(
+                detect_status, content, chkmemo, srcId, dest_dict.get(srcId))
+            destCur.execute(destUpdateSql)
 
-                    destUpdateSql1 = ''' update pt_thread set detect_result = {0} where record_id={1} '''.format(
-                        detect_status, id)
-                    destCur.execute(destUpdateSql1)
-
+            destUpdateSql1 = ''' update pt_thread set detect_result = {},content = '{}' where record_id={} '''.format(
+                detect_status, content, dest_dict.get(srcId))
+            destCur.execute(destUpdateSql1)
+            logging.debug("process id = {}".format(dest_dict.get(srcId)))
+        logging.info("total process {} ".format(effect_rows))
         srcDb.commit()
         destDb.commit()
         srcDb.close()
@@ -94,9 +117,7 @@ if __name__ == "__main__":
         while 1:
             beginTime = datetime.datetime.today() - datetime.timedelta(hours=1)
             endTime = beginTime + datetime.timedelta(hours=1)
-            t = threading.Thread(target=process,
-                                 args=(configer, beginTime, endTime,))
-            t.start()
+            process(configer, beginTime, endTime)
             timeNow = datetime.datetime.today()
             sleepTime = 3600 - timeNow.minute * 60 - timeNow.second + 1
             logging.info("进入休眠{0}s".format(sleepTime))

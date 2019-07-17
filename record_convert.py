@@ -19,11 +19,13 @@ import record_config
 
 def file_trans(acc_list, link):
     result = ""
+    acc = ""
     for accDic in acc_list:
         akId = accDic.get("accessKeyId")
         akSecret = accDic.get("accessKeySecret")
         appKey = accDic.get("appKey")
         status = accDic.get("status")
+        acc = appKey
         if not status:
             result = "USER_BIZDURATION_QUOTA_EXCEED"
             continue
@@ -109,7 +111,7 @@ def file_trans(acc_list, link):
                 break
             else:
                 logging.error("录音文件识别失败！" + fileLink)
-    return result
+    return result,acc
 
 
 # 分词处理
@@ -150,7 +152,7 @@ def get_accs(cf):
     if err1 is not None:
         logging.error(err1)
         exit(-1)
-    accSql = 'select ak,aks,apk from mm_ali where use_flag = "ON" '
+    accSql = 'select ak,aks,apk from mm_ali where use_flag = "ON" order by id  '
     accCur = accDb.cursor()
     efrs = accCur.execute(accSql)
     if efrs > 0:
@@ -180,8 +182,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', help='配置文件', default='conf/record.conf')
     parser.add_argument('--logging', help='日志配置', default='conf/logging_convert.conf')
+    parser.add_argument('--seq', help='并发序列号', default='1')
     args = parser.parse_args()
-
+    print(args.seq)
+    type(args.seq)
     if args.logging:
         os.makedirs('log', exist_ok=True)
         logging.config.fileConfig(args.logging)
@@ -196,18 +200,22 @@ if __name__ == "__main__":
             exit(-1)
         while True:
             try:
+                icnt = 0
                 destDb.ping(reconnect=True)
                 if destDb._closed == True:
                     logging.error("获取数据库链接失败：{0}".format(err))
                     exit(-1)
-                sql = ''' select id,file_name,substr(SUBSTRING_INDEX(SUBSTRING_INDEX(file_name,'_',2),'/',-1),1,11) from mm_record_quality where status = 'RDY'  order by id limit {0}'''.format(
-                    configer.limit)
+                sql = ''' select id,file_name,substr(SUBSTRING_INDEX(SUBSTRING_INDEX(file_name,'_',2),'/',-1),1,11) from mm_record_quality where status = 'RDY' and id % 10 = {} order by id limit {}'''.format(
+                    int(args.seq), configer.limit)
 
                 destCur = destDb.cursor()
                 effectRows = destCur.execute(sql)
                 if effectRows > 0:
                     rows = destCur.fetchall()
+                    insert_values = ''
+                    err_ids = ''
                     for row in rows:
+                        icnt += 1
                         idIdx = row[0]
                         fileName = row[1]
                         logging.debug("开始处理id={0}".format(idIdx))
@@ -215,7 +223,7 @@ if __name__ == "__main__":
                         logging.debug("{0} process {1} at {2}".format(os.getpid(),idIdx,time.time()))
                         # 生成签名URL
                         fileLink = configer.bucket.sign_url('GET', row[1], configer.expires)
-                        resText = file_trans(accList, fileLink)
+                        resText,myAcc = file_trans(accList, fileLink)
                         if resText != "":
                             if resText == "USER_BIZDURATION_QUOTA_EXCEED":
                                 destDb.commit()
@@ -244,21 +252,32 @@ if __name__ == "__main__":
                                 destPath, idIdx)
                             destCur.execute(updateSql)
                             logging.debug("插入id={0}".format(idIdx))
-                            insertSql = ''' insert into mm_record_content (id,record_content) value({0},'{1}') '''.format(
-                                idIdx, resText)
-                            destCur.execute(insertSql)
+                            if len(insert_values) == 0:
+                                insert_values  = ''' ({0},'{1}','{2}') '''.format(idIdx, resText, myAcc)
+                            else:
+                                insert_values = ''' {},({},'{}','{}') '''.format(insert_values, idIdx, resText, myAcc)
                         else:
                             logging.error("识别失败 " + fileName)
-                            updateSql = ''' update mm_record_quality set status = 'ERR' where id = {0} '''.format(
-                                idIdx)
-                            destCur.execute(updateSql)
+                            if len(err_ids) == 0:
+                                err_ids  = ''' {0} '''.format(idIdx)
+                            else:
+                                err_ids = ''' {},{} '''.format(err_ids, idIdx)
+                        if icnt % 1000 == 0:
+                            destDb.commit()
+                            destDb.ping(reconnect=True)
+                    if len(insert_values) > 0:
+                        insertSql = ''' insert into mm_record_content (id,record_content,ak) values {} '''.format(insert_values)
+                        destCur.execute(insertSql)
+                    if len(err_ids) > 0:
+                        updateSql = ''' update mm_record_quality set status = 'ERR' where id in ({0}) '''.format(idIdx)
+                        destCur.execute(updateSql)
                 else:
                     destDb.commit()
                     logging.info("进入休眠{0}s".format(configer.interval))
                     time.sleep(configer.interval)
 
-                destDb.ping(reconnect=True)
                 destDb.commit()
+                destDb.ping(reconnect=True)
             except Exception as e:
                 logging.error(e)
                 logging.error(traceback.format_exc())

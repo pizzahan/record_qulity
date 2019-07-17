@@ -43,6 +43,7 @@ def process(configer, beginTime, endTime):
         logging.error(err)
         return
     try:
+        icnt = 0
         srcCur = srcDb.cursor()
         destCur = destDb.cursor()
         # 呼叫结果配置 pre_cc_biztemp.result 和业务关系比较复杂，后面优化
@@ -72,13 +73,14 @@ def process(configer, beginTime, endTime):
         # worker_name = row[12]
         # dateline = row[13]
 
-        srcSql = ''' select a.id, a.dphone, a.callid, a.cid, a.prjid, a.content, a.uid, a.dateline, a.status  from pre_cc_biztrack a
-                where a.result=2 and a.dateline BETWEEN {0} and {1}'''.format(
+        srcSql = ''' select a.id, a.dphone, a.callid, a.cid, a.prjid, a.content, a.uid, a.dateline, a.status, a.chkmemo  from pre_cc_biztrack a
+                where a.result=2 and  prjid not in (381,382,384) and a.dateline BETWEEN {0} and {1}'''.format(
             beginTime, endTime)
         effect_rows = srcCur.execute(srcSql)
         if effect_rows > 0:
             rows = srcCur.fetchall()
             for row in rows:
+                icnt += 1
                 srcId = row[0]
                 logging.debug("process srcId = {0}".format(srcId))
                 mobile = row[1]
@@ -90,6 +92,7 @@ def process(configer, beginTime, endTime):
                 user_id = row[6]
                 dateline = row[7]
                 detect_result = row[8]
+                chkmemo = row[9]
                 sql_pre_cc_call = ''' select b.duration,b.recfileid from pre_cc_call b where b.id = {0} '''.format(callId)
                 effect_rows_pre_cc_call = srcCur.execute(sql_pre_cc_call)
                 if effect_rows_pre_cc_call > 0:
@@ -111,9 +114,9 @@ def process(configer, beginTime, endTime):
                         if effect_rows_mm > 0:
                             rows_mm = destCur.fetchone()
                             mm_id = rows_mm[0]
-                            sql_mm_recover = ''' insert into  mm_record_quality (mobile,file_name,text_file,status,score,src_id,duration,cid,prjid,company_name,project_name,content,operator_id,deal,uid,worker_no,worker_name,detect_result)
-                            select mobile,file_name,text_file,status,score,src_id,duration,cid,prjid,company_name,project_name,'{0}',operator_id,deal,uid,worker_no,worker_name,detect_result from mm_record_quality 
-                             where id = {1}'''.format(content, mm_id)
+                            sql_mm_recover = ''' insert into  mm_record_quality (mobile,file_name,text_file,status,score,src_id,duration,cid,prjid,company_name,project_name,content,operator_id,deal,uid,worker_no,worker_name,detect_result,call_time)
+                            select mobile,file_name,text_file,status,score,{},duration,cid,prjid,company_name,project_name,'{}',operator_id,deal,uid,worker_no,worker_name,detect_result,call_time from mm_record_quality 
+                             where id = {}'''.format(srcId, content, mm_id)
                             logging.debug("sql_mm_recover = {0}".format(sql_mm_recover))
                             effect_rows_mm_recover = destCur.execute(sql_mm_recover)
                             if effect_rows_mm_recover != 1:
@@ -159,12 +162,17 @@ def process(configer, beginTime, endTime):
                     localPath = '{0}/{1}'.format(configer.wavPath2, filename)
                 if not rec.checkExists(destFile):
                     rec.upload(destFile, localPath)
-                    destSql = ''' insert into mm_record_quality(mobile,file_name,status,src_id,cid,prjid,duration,company_name,project_name,content,uid, worker_no, worker_name, detect_result) value ('{0}','{1}','{2}',{3},{4},{5},{6},'{7}','{8}','{9}',{10},'{11}','{12}','{13}') '''.format(
-                        mobile, destFile, mm_status, srcId, cid, prjid, duration, company_name, project_name, content, user_id, worker_id, worker_name, detect_result)
+                    destSql = ''' insert into mm_record_quality(mobile,file_name,status,src_id,cid,prjid,duration,company_name,project_name,content,uid, worker_no, worker_name, detect_result, chkmemo, call_time) value ('{0}','{1}','{2}',{3},{4},{5},{6},'{7}','{8}','{9}',{10},'{11}','{12}','{13}','{14}',str_to_date('{15}','%Y%m%d%H%i%S')) '''.format(
+                        mobile, destFile, mm_status, srcId, cid, prjid, duration, company_name, project_name, content, user_id, worker_id, worker_name, detect_result, chkmemo, time.strftime('%Y%m%d%H%M%S', time.localtime(dateline)))
                     logging.debug(destSql)
                     destCur.execute(destSql)
                 else:
                     logging.info("file is already exists " + destFile)
+            if icnt % 1000 == 0:
+                srcDb.commit()
+                destDb.commit()
+                srcDb.ping(reconnect=True)
+                destDb.ping(reconnect=True)
         srcDb.commit()
         destDb.commit()
         srcDb.close()
